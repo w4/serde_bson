@@ -1,0 +1,30 @@
+[package]
+name = "serde_bson"
+authors = ["Jordan D. <jordan@doyle.la>"]
+description = "Fast bson serde implementation"
+repository = "https://github.com/w4/serde_bson"
+version = "0.0.1"
+edition = "2018"
+license = "0BSD"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = "1"
+bytes = "1"
+take_mut = "0.2"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+bson = "1.2"
+criterion = "0.3"
+rand = "0.8"
+
+[[bench]]
+name = "borrowed"
+harness = false
+
+[[bench]]
+name = "owned"
+harness = false
