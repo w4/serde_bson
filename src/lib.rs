@@ -31,7 +31,11 @@ mod test {
         pub enum Test {
             Abc,
             Def(i32),
+            Ghi(i32, i32, i32),
         }
+
+        #[derive(Serialize)]
+        pub struct Tup(i32, i32);
 
         #[derive(Serialize)]
         pub struct B<'a> {
@@ -39,7 +43,9 @@ mod test {
             a: Vec<&'a str>,
             e: Test,
             e2: Test,
+            e3: Test,
             t: (i32, i32, i32),
+            ts: Tup,
         }
 
         let test = &A {
@@ -51,7 +57,9 @@ mod test {
                 a: vec!["yooo", "mayn"],
                 e: Test::Abc,
                 e2: Test::Def(1999),
+                e3: Test::Ghi(16, 07, 1999),
                 t: (16, 07, 1999),
+                ts: Tup(99, 100),
             },
         };
 

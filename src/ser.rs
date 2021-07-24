@@ -29,8 +29,8 @@ impl<'a> serde::Serializer for Serializer<'a> {
 
     type SerializeSeq = SeqSerializer<'a>;
     type SerializeTuple = TupleSerializer<'a>;
-    type SerializeTupleStruct = serde::ser::Impossible<Self::Ok, Self::Error>;
-    type SerializeTupleVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleStruct = TupleStructSerializer<'a>;
+    type SerializeTupleVariant = TupleVariantSerializer<'a>;
     type SerializeMap = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeStruct = StructSerializer<'a>;
     type SerializeStructVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
@@ -205,19 +205,39 @@ impl<'a> serde::Serializer for Serializer<'a> {
     fn serialize_tuple_struct(
         self,
         _name: &'static str,
-        _len: usize,
+        len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        todo!("tuple struct")
+        Ok(TupleStructSerializer {
+            inner: self.serialize_seq(Some(len))?,
+        })
     }
 
     fn serialize_tuple_variant(
-        self,
+        mut self,
         _name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        todo!("tuple variant")
+        // we essentially need a nested type here which isn't too well supported with serde's
+        // model, first we create a new document which we'll use to write the variant into as
+        // the key, and then we'll create a second document we'll use as an array for each
+        // tuple element
+
+        if self.key.is_some() {
+            write_key_or_error!(0x03, self.key, self.output);
+        }
+
+        let mut doc_output = start_document(&mut self.output);
+        write_key_or_error!(0x04, Some(DocumentKey::Str(variant)), &mut doc_output);
+        let array_output = start_document(&mut doc_output);
+
+        Ok(TupleVariantSerializer {
+            original_output: self.output,
+            array_output,
+            doc_output,
+            key: 0,
+        })
     }
 
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
@@ -261,6 +281,60 @@ impl<'a> serde::ser::SerializeTuple for TupleSerializer<'a> {
     type Error = <Serializer<'a> as serde::Serializer>::Error;
 
     fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: Serialize,
+    {
+        self.inner.serialize_element(value)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        self.inner.end()
+    }
+}
+
+pub struct TupleVariantSerializer<'a> {
+    original_output: &'a mut BytesMut,
+    array_output: BytesMut,
+    doc_output: BytesMut,
+    key: usize,
+}
+
+impl<'a> serde::ser::SerializeTupleVariant for TupleVariantSerializer<'a> {
+    type Ok = ();
+    type Error = <Serializer<'a> as serde::Serializer>::Error;
+
+    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: Serialize,
+    {
+        // we're basically inside a SeqSerializer here, but we can't instantiate one
+        // so we'll duplicate the functionality instead
+        value.serialize(Serializer {
+            key: Some(DocumentKey::Int(self.key)),
+            output: &mut self.array_output,
+        })?;
+        self.key += 1;
+        Ok(())
+    }
+
+    fn end(mut self) -> Result<Self::Ok, Self::Error> {
+        // first we close the array output into the doc output, then write the complete doc output
+        // to original_output
+        terminate_document(&mut self.doc_output, self.array_output);
+        terminate_document(self.original_output, self.doc_output);
+        Ok(())
+    }
+}
+
+pub struct TupleStructSerializer<'a> {
+    inner: SeqSerializer<'a>,
+}
+
+impl<'a> serde::ser::SerializeTupleStruct for TupleStructSerializer<'a> {
+    type Ok = ();
+    type Error = <Serializer<'a> as serde::Serializer>::Error;
+
+    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
     where
         T: Serialize,
     {
