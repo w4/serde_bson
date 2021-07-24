@@ -12,7 +12,6 @@ license = "0BSD"
 [dependencies]
 serde = "1"
 bytes = "1"
-take_mut = "0.2"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

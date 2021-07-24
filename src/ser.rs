@@ -1,11 +1,11 @@
 use crate::Error;
-use bytes::BufMut;
+use bytes::{BufMut, BytesMut};
 use serde::Serialize;
 use std::convert::TryFrom;
 
-pub struct Serializer<'a, B: BufMut> {
+pub struct Serializer<'a> {
     pub key: Option<&'static str>,
-    pub output: &'a mut B,
+    pub output: &'a mut BytesMut,
 }
 
 macro_rules! write_key_or_error {
@@ -20,7 +20,7 @@ macro_rules! write_key_or_error {
     };
 }
 
-impl<'a, B: BufMut> serde::Serializer for Serializer<'a, B> {
+impl<'a> serde::Serializer for Serializer<'a> {
     type Ok = ();
     type Error = Error;
 
@@ -29,7 +29,7 @@ impl<'a, B: BufMut> serde::Serializer for Serializer<'a, B> {
     type SerializeTupleStruct = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeTupleVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeMap = serde::ser::Impossible<Self::Ok, Self::Error>;
-    type SerializeStruct = StructSerializer<'a, B>;
+    type SerializeStruct = StructSerializer<'a>;
     type SerializeStructVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
@@ -208,11 +208,19 @@ impl<'a, B: BufMut> serde::Serializer for Serializer<'a, B> {
         _len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
         if self.key.is_some() {
-            todo!("nested struct: {:?}", self.key);
+            write_key_or_error!(0x03, self.key, self.output);
         }
 
+        // splits the output for the doc to be written to, this is appended back onto to the
+        // output when `StructSerializer::close` is called.
+        let mut doc_output = self.output.split_off(self.output.len());
+
+        // reserves a i32 we can write the document size to later
+        doc_output.put_i32(0);
+
         Ok(StructSerializer {
-            output: self.output,
+            original_output: self.output,
+            doc_output,
         })
     }
 
@@ -227,13 +235,14 @@ impl<'a, B: BufMut> serde::Serializer for Serializer<'a, B> {
     }
 }
 
-pub struct StructSerializer<'a, B: BufMut> {
-    output: &'a mut B,
+pub struct StructSerializer<'a> {
+    original_output: &'a mut BytesMut,
+    doc_output: BytesMut,
 }
 
-impl<'a, B: BufMut> serde::ser::SerializeStruct for StructSerializer<'a, B> {
+impl<'a> serde::ser::SerializeStruct for StructSerializer<'a> {
     type Ok = ();
-    type Error = <Serializer<'a, B> as serde::Serializer>::Error;
+    type Error = <Serializer<'a> as serde::Serializer>::Error;
 
     fn serialize_field<T: ?Sized>(
         &mut self,
@@ -245,12 +254,24 @@ impl<'a, B: BufMut> serde::ser::SerializeStruct for StructSerializer<'a, B> {
     {
         value.serialize(Serializer {
             key: Some(key),
-            output: &mut self.output,
+            output: &mut self.doc_output,
         })
     }
 
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        self.output.put_u8(0x00); // doc terminator
+    fn end(mut self) -> Result<Self::Ok, Self::Error> {
+        self.doc_output.put_u8(0x00); // doc terminator
+
+        // writes the total length of the output to the i32 we split off before
+        for (i, byte) in (self.doc_output.len() as i32)
+            .to_le_bytes()
+            .iter()
+            .enumerate()
+        {
+            self.doc_output[i] = *byte;
+        }
+
+        self.original_output.unsplit(self.doc_output);
+
         Ok(())
     }
 }
