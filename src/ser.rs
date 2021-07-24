@@ -1,6 +1,6 @@
 use crate::Error;
 use bytes::{BufMut, BytesMut};
-use serde::Serialize;
+use serde::{ser::SerializeStruct, Serialize};
 use std::convert::TryFrom;
 
 pub struct Serializer<'a> {
@@ -136,16 +136,16 @@ impl<'a> serde::Serializer for Serializer<'a> {
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
-        unimplemented!("unit struct")
+        self.serialize_none()
     }
 
     fn serialize_unit_variant(
         self,
         _name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        unimplemented!("unit variant")
+        self.serialize_str(variant)
     }
 
     fn serialize_newtype_struct<T: ?Sized>(
@@ -163,16 +163,18 @@ impl<'a> serde::Serializer for Serializer<'a> {
         self,
         _name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
-        _value: &T,
+        variant: &'static str,
+        value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
         T: Serialize,
     {
-        todo!("newtype variant")
+        let mut struct_serializer = self.serialize_struct("", 0)?;
+        struct_serializer.serialize_field(variant, value)?;
+        struct_serializer.end()
     }
 
-    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+    fn serialize_seq(mut self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
         // it'd be so much simpler if we could just delegate SerializeSeq to SerializeStruct since
         // an array in bson is just a document with numeric keys but SerializeStruct needs a
         // &'static str, and we can't do that unless we either write the string repr of 1..i32::MAX
@@ -182,12 +184,7 @@ impl<'a> serde::Serializer for Serializer<'a> {
             write_key_or_error!(0x04, self.key, self.output);
         }
 
-        // splits the output for the doc to be written to, this is appended back onto to the
-        // output when `StructSerializer::close` is called.
-        let mut doc_output = self.output.split_off(self.output.len());
-
-        // reserves a i32 we can write the document size to later
-        doc_output.put_i32(0);
+        let doc_output = start_document(&mut self.output);
 
         Ok(SeqSerializer {
             original_output: self.output,
@@ -223,7 +220,7 @@ impl<'a> serde::Serializer for Serializer<'a> {
     }
 
     fn serialize_struct(
-        self,
+        mut self,
         _name: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
@@ -231,12 +228,7 @@ impl<'a> serde::Serializer for Serializer<'a> {
             write_key_or_error!(0x03, self.key, self.output);
         }
 
-        // splits the output for the doc to be written to, this is appended back onto to the
-        // output when `StructSerializer::close` is called.
-        let mut doc_output = self.output.split_off(self.output.len());
-
-        // reserves a i32 we can write the document size to later
-        doc_output.put_i32(0);
+        let doc_output = start_document(&mut self.output);
 
         Ok(StructSerializer {
             original_output: self.output,
@@ -277,9 +269,8 @@ impl<'a> serde::ser::SerializeSeq for SeqSerializer<'a> {
         Ok(())
     }
 
-    fn end(mut self) -> Result<Self::Ok, Self::Error> {
-        terminate_document(&mut self.doc_output);
-        self.original_output.unsplit(self.doc_output);
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        terminate_document(self.original_output, self.doc_output);
         Ok(())
     }
 }
@@ -307,9 +298,8 @@ impl<'a> serde::ser::SerializeStruct for StructSerializer<'a> {
         })
     }
 
-    fn end(mut self) -> Result<Self::Ok, Self::Error> {
-        terminate_document(&mut self.doc_output);
-        self.original_output.unsplit(self.doc_output);
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        terminate_document(self.original_output, self.doc_output);
         Ok(())
     }
 }
@@ -331,12 +321,28 @@ impl DocumentKey {
     }
 }
 
-pub fn terminate_document(buffer: &mut BytesMut) {
-    buffer.put_u8(0x00); // doc terminator
+pub fn start_document(buffer: &mut BytesMut) -> BytesMut {
+    // splits the output for the doc to be written to, this is appended back onto to the
+    // output when `StructSerializer::close` is called.
+    let mut doc_output = buffer.split_off(buffer.len());
+
+    // reserves a i32 we can write the document size to later
+    doc_output.put_i32(0);
+
+    doc_output
+}
+
+pub fn terminate_document(original_buffer: &mut BytesMut, mut document: BytesMut) {
+    document.put_u8(0x00); // doc terminator
 
     // writes the total length of the output to the i32 we reserved earlier
-    for (i, byte) in (buffer.len() as i32).to_le_bytes().iter().enumerate() {
-        debug_assert_eq!(buffer[i], 0, "document didn't reserve bytes for the length");
-        buffer[i] = *byte;
+    for (i, byte) in (document.len() as i32).to_le_bytes().iter().enumerate() {
+        debug_assert_eq!(
+            document[i], 0,
+            "document didn't reserve bytes for the length"
+        );
+        document[i] = *byte;
     }
+
+    original_buffer.unsplit(document);
 }
