@@ -32,6 +32,7 @@ mod test {
             Abc,
             Def(i32),
             Ghi(i32, i32, i32),
+            Jkl { a: i32, b: i32 },
         }
 
         #[derive(Serialize)]
@@ -44,6 +45,7 @@ mod test {
             e: Test,
             e2: Test,
             e3: Test,
+            e4: Test,
             t: (i32, i32, i32),
             ts: Tup,
         }
@@ -58,6 +60,7 @@ mod test {
                 e: Test::Abc,
                 e2: Test::Def(1999),
                 e3: Test::Ghi(16, 07, 1999),
+                e4: Test::Jkl { a: 16, b: 07 },
                 t: (16, 07, 1999),
                 ts: Tup(99, 100),
             },

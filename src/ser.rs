@@ -33,7 +33,7 @@ impl<'a> serde::Serializer for Serializer<'a> {
     type SerializeTupleVariant = TupleVariantSerializer<'a>;
     type SerializeMap = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeStruct = StructSerializer<'a>;
-    type SerializeStructVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeStructVariant = StructVariantSerializer<'a>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
         write_key_or_error!(0x01, self.key, self.output);
@@ -242,13 +242,28 @@ impl<'a> serde::Serializer for Serializer<'a> {
     }
 
     fn serialize_struct_variant(
-        self,
+        mut self,
         _name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        todo!("struct variant")
+        // this method ends up very similar to serialize_tuple_variant except string keys
+        // are used for the output document
+
+        if self.key.is_some() {
+            write_key_or_error!(0x03, self.key, self.output);
+        }
+
+        let mut doc_output = start_document(&mut self.output);
+        write_key_or_error!(0x03, Some(DocumentKey::Str(variant)), &mut doc_output);
+        let nested_doc_output = start_document(&mut doc_output);
+
+        Ok(StructVariantSerializer {
+            original_output: self.output,
+            nested_doc_output,
+            doc_output,
+        })
     }
 
     fn serialize_u8(self, _v: u8) -> Result<Self::Ok, Self::Error> {
@@ -321,6 +336,44 @@ impl<'a> serde::ser::SerializeTupleVariant for TupleVariantSerializer<'a> {
         // first we close the array output into the doc output, then write the complete doc output
         // to original_output
         terminate_document(&mut self.doc_output, self.array_output);
+        terminate_document(self.original_output, self.doc_output);
+        Ok(())
+    }
+}
+
+pub struct StructVariantSerializer<'a> {
+    original_output: &'a mut BytesMut,
+    nested_doc_output: BytesMut,
+    doc_output: BytesMut,
+}
+
+impl<'a> serde::ser::SerializeStructVariant for StructVariantSerializer<'a> {
+    type Ok = ();
+    type Error = <Serializer<'a> as serde::Serializer>::Error;
+
+    fn serialize_field<T: ?Sized>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), Self::Error>
+    where
+        T: Serialize,
+    {
+        // we're basically inside a nested StructSerializer here, but we can't
+        // instantiate one so we'll duplicate the functionality instead. this
+        // is very similar to `TupleVariantSerializer` except string keys are
+        // used instead
+        value.serialize(Serializer {
+            key: Some(DocumentKey::Str(key)),
+            output: &mut self.nested_doc_output,
+        })?;
+        Ok(())
+    }
+
+    fn end(mut self) -> Result<Self::Ok, Self::Error> {
+        // first we close the nested output into the doc output, then write the complete doc output
+        // to original_output
+        terminate_document(&mut self.doc_output, self.nested_doc_output);
         terminate_document(self.original_output, self.doc_output);
         Ok(())
     }
