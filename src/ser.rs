@@ -61,22 +61,6 @@ impl<'a> serde::Serializer for Serializer<'a> {
         Ok(())
     }
 
-    fn serialize_u8(self, _v: u8) -> Result<Self::Ok, Self::Error> {
-        Err(Error::UnsignedIntNotInSpec)
-    }
-
-    fn serialize_u16(self, _v: u16) -> Result<Self::Ok, Self::Error> {
-        Err(Error::UnsignedIntNotInSpec)
-    }
-
-    fn serialize_u32(self, _v: u32) -> Result<Self::Ok, Self::Error> {
-        Err(Error::UnsignedIntNotInSpec)
-    }
-
-    fn serialize_u64(self, _v: u64) -> Result<Self::Ok, Self::Error> {
-        Err(Error::UnsignedIntNotInSpec)
-    }
-
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
         self.serialize_f64(v as f64)
     }
@@ -85,10 +69,6 @@ impl<'a> serde::Serializer for Serializer<'a> {
         write_key_or_error!(0x01, self.key, self.output);
         self.output.put_f64_le(v);
         Ok(())
-    }
-
-    fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
-        Err(Error::UnsignedIntNotInSpec)
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
@@ -269,6 +249,26 @@ impl<'a> serde::Serializer for Serializer<'a> {
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
         todo!("struct variant")
+    }
+
+    fn serialize_u8(self, _v: u8) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsignedIntNotInSpec)
+    }
+
+    fn serialize_u16(self, _v: u16) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsignedIntNotInSpec)
+    }
+
+    fn serialize_u32(self, _v: u32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsignedIntNotInSpec)
+    }
+
+    fn serialize_u64(self, _v: u64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsignedIntNotInSpec)
+    }
+
+    fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsignedIntNotInSpec)
     }
 }
 
