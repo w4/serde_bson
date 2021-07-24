@@ -39,6 +39,7 @@ mod test {
             a: Vec<&'a str>,
             e: Test,
             e2: Test,
+            t: (i32, i32, i32),
         }
 
         let test = &A {
@@ -50,6 +51,7 @@ mod test {
                 a: vec!["yooo", "mayn"],
                 e: Test::Abc,
                 e2: Test::Def(1999),
+                t: (16, 07, 1999),
             },
         };
 

@@ -1,6 +1,9 @@
 use crate::Error;
 use bytes::{BufMut, BytesMut};
-use serde::{ser::SerializeStruct, Serialize};
+use serde::{
+    ser::{SerializeSeq, SerializeStruct},
+    Serialize,
+};
 use std::convert::TryFrom;
 
 pub struct Serializer<'a> {
@@ -25,7 +28,7 @@ impl<'a> serde::Serializer for Serializer<'a> {
     type Error = Error;
 
     type SerializeSeq = SeqSerializer<'a>;
-    type SerializeTuple = serde::ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeTuple = TupleSerializer<'a>;
     type SerializeTupleStruct = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeTupleVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeMap = serde::ser::Impossible<Self::Ok, Self::Error>;
@@ -193,8 +196,10 @@ impl<'a> serde::Serializer for Serializer<'a> {
         })
     }
 
-    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        todo!("tuple")
+    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        Ok(TupleSerializer {
+            inner: self.serialize_seq(Some(len))?,
+        })
     }
 
     fn serialize_tuple_struct(
@@ -244,6 +249,26 @@ impl<'a> serde::Serializer for Serializer<'a> {
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
         todo!("struct variant")
+    }
+}
+
+pub struct TupleSerializer<'a> {
+    inner: SeqSerializer<'a>,
+}
+
+impl<'a> serde::ser::SerializeTuple for TupleSerializer<'a> {
+    type Ok = ();
+    type Error = <Serializer<'a> as serde::Serializer>::Error;
+
+    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: Serialize,
+    {
+        self.inner.serialize_element(value)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        self.inner.end()
     }
 }
 
