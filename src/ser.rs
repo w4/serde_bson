@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::convert::TryFrom;
 
 pub struct Serializer<'a> {
-    pub key: Option<&'static str>,
+    pub key: Option<DocumentKey>,
     pub output: &'a mut BytesMut,
 }
 
@@ -12,7 +12,7 @@ macro_rules! write_key_or_error {
     ($id:literal, $key:expr, $output:expr) => {
         if let Some(key) = $key {
             $output.put_u8($id);
-            $output.put_slice(key.as_bytes());
+            key.write_to_buf($output);
             $output.put_u8(0x00);
         } else {
             return Err(Error::NotSerializingStruct);
@@ -24,7 +24,7 @@ impl<'a> serde::Serializer for Serializer<'a> {
     type Ok = ();
     type Error = Error;
 
-    type SerializeSeq = serde::ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeSeq = SeqSerializer<'a>;
     type SerializeTuple = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeTupleStruct = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeTupleVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
@@ -173,7 +173,27 @@ impl<'a> serde::Serializer for Serializer<'a> {
     }
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        todo!("seq")
+        // it'd be so much simpler if we could just delegate SerializeSeq to SerializeStruct since
+        // an array in bson is just a document with numeric keys but SerializeStruct needs a
+        // &'static str, and we can't do that unless we either write the string repr of 1..i32::MAX
+        // to the binary or leak the string, neither seem like a good idea.
+
+        if self.key.is_some() {
+            write_key_or_error!(0x04, self.key, self.output);
+        }
+
+        // splits the output for the doc to be written to, this is appended back onto to the
+        // output when `StructSerializer::close` is called.
+        let mut doc_output = self.output.split_off(self.output.len());
+
+        // reserves a i32 we can write the document size to later
+        doc_output.put_i32(0);
+
+        Ok(SeqSerializer {
+            original_output: self.output,
+            doc_output,
+            key: 0,
+        })
     }
 
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
@@ -235,6 +255,35 @@ impl<'a> serde::Serializer for Serializer<'a> {
     }
 }
 
+pub struct SeqSerializer<'a> {
+    original_output: &'a mut BytesMut,
+    doc_output: BytesMut,
+    key: usize,
+}
+
+impl<'a> serde::ser::SerializeSeq for SeqSerializer<'a> {
+    type Ok = ();
+    type Error = <Serializer<'a> as serde::Serializer>::Error;
+
+    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: Serialize,
+    {
+        value.serialize(Serializer {
+            key: Some(DocumentKey::Int(self.key)),
+            output: &mut self.doc_output,
+        })?;
+        self.key += 1;
+        Ok(())
+    }
+
+    fn end(mut self) -> Result<Self::Ok, Self::Error> {
+        terminate_document(&mut self.doc_output);
+        self.original_output.unsplit(self.doc_output);
+        Ok(())
+    }
+}
+
 pub struct StructSerializer<'a> {
     original_output: &'a mut BytesMut,
     doc_output: BytesMut,
@@ -253,25 +302,41 @@ impl<'a> serde::ser::SerializeStruct for StructSerializer<'a> {
         T: Serialize,
     {
         value.serialize(Serializer {
-            key: Some(key),
+            key: Some(DocumentKey::Str(key)),
             output: &mut self.doc_output,
         })
     }
 
     fn end(mut self) -> Result<Self::Ok, Self::Error> {
-        self.doc_output.put_u8(0x00); // doc terminator
-
-        // writes the total length of the output to the i32 we split off before
-        for (i, byte) in (self.doc_output.len() as i32)
-            .to_le_bytes()
-            .iter()
-            .enumerate()
-        {
-            self.doc_output[i] = *byte;
-        }
-
+        terminate_document(&mut self.doc_output);
         self.original_output.unsplit(self.doc_output);
-
         Ok(())
+    }
+}
+
+pub enum DocumentKey {
+    Str(&'static str),
+    Int(usize),
+}
+
+impl DocumentKey {
+    pub fn write_to_buf(&self, buf: &mut BytesMut) {
+        match self {
+            Self::Str(s) => buf.put_slice(s.as_bytes()),
+            Self::Int(i) => {
+                let mut itoa = itoa::Buffer::new();
+                buf.put_slice(itoa.format(*i).as_bytes());
+            }
+        }
+    }
+}
+
+pub fn terminate_document(buffer: &mut BytesMut) {
+    buffer.put_u8(0x00); // doc terminator
+
+    // writes the total length of the output to the i32 we reserved earlier
+    for (i, byte) in (buffer.len() as i32).to_le_bytes().iter().enumerate() {
+        debug_assert_eq!(buffer[i], 0, "document didn't reserve bytes for the length");
+        buffer[i] = *byte;
     }
 }

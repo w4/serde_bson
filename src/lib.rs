@@ -30,13 +30,17 @@ mod test {
         #[derive(Serialize)]
         pub struct B<'a> {
             s: &'a str,
+            a: Vec<&'a str>,
         }
 
         let test = &A {
             cool: 999,
             beans: "so there was this one time at bandcamp".as_bytes(),
             bro: "the craziest thing happened",
-            b: B { s: "dddd" },
+            b: B {
+                s: "dddd",
+                a: vec!["yooo", "mayn"],
+            },
         };
 
         let mut ours = BytesMut::new();
