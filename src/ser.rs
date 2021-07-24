@@ -1,14 +1,13 @@
-use crate::Error;
-use bytes::{BufMut, BytesMut};
+use crate::{byte::BytesLikeBuf, Error};
 use serde::{
     ser::{SerializeSeq, SerializeStruct},
     Serialize,
 };
 use std::convert::TryFrom;
 
-pub struct Serializer<'a> {
+pub struct Serializer<'a, B: BytesLikeBuf> {
     pub key: Option<DocumentKey>,
-    pub output: &'a mut BytesMut,
+    pub output: &'a mut B,
 }
 
 macro_rules! write_key_or_error {
@@ -23,17 +22,17 @@ macro_rules! write_key_or_error {
     };
 }
 
-impl<'a> serde::Serializer for Serializer<'a> {
+impl<'a, B: BytesLikeBuf> serde::Serializer for Serializer<'a, B> {
     type Ok = ();
     type Error = Error;
 
-    type SerializeSeq = SeqSerializer<'a>;
-    type SerializeTuple = TupleSerializer<'a>;
-    type SerializeTupleStruct = TupleStructSerializer<'a>;
-    type SerializeTupleVariant = TupleVariantSerializer<'a>;
+    type SerializeSeq = SeqSerializer<'a, B>;
+    type SerializeTuple = TupleSerializer<'a, B>;
+    type SerializeTupleStruct = TupleStructSerializer<'a, B>;
+    type SerializeTupleVariant = TupleVariantSerializer<'a, B>;
     type SerializeMap = serde::ser::Impossible<Self::Ok, Self::Error>;
-    type SerializeStruct = StructSerializer<'a>;
-    type SerializeStructVariant = StructVariantSerializer<'a>;
+    type SerializeStruct = StructSerializer<'a, B>;
+    type SerializeStructVariant = StructVariantSerializer<'a, B>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
         write_key_or_error!(0x01, self.key, self.output);
@@ -287,13 +286,13 @@ impl<'a> serde::Serializer for Serializer<'a> {
     }
 }
 
-pub struct TupleSerializer<'a> {
-    inner: SeqSerializer<'a>,
+pub struct TupleSerializer<'a, B: BytesLikeBuf> {
+    inner: SeqSerializer<'a, B>,
 }
 
-impl<'a> serde::ser::SerializeTuple for TupleSerializer<'a> {
+impl<'a, B: BytesLikeBuf> serde::ser::SerializeTuple for TupleSerializer<'a, B> {
     type Ok = ();
-    type Error = <Serializer<'a> as serde::Serializer>::Error;
+    type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
     fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
     where
@@ -307,16 +306,16 @@ impl<'a> serde::ser::SerializeTuple for TupleSerializer<'a> {
     }
 }
 
-pub struct TupleVariantSerializer<'a> {
-    original_output: &'a mut BytesMut,
-    array_output: BytesMut,
-    doc_output: BytesMut,
+pub struct TupleVariantSerializer<'a, B: BytesLikeBuf> {
+    original_output: &'a mut B,
+    array_output: <B::Out as BytesLikeBuf>::Out,
+    doc_output: B::Out,
     key: usize,
 }
 
-impl<'a> serde::ser::SerializeTupleVariant for TupleVariantSerializer<'a> {
+impl<'a, B: BytesLikeBuf> serde::ser::SerializeTupleVariant for TupleVariantSerializer<'a, B> {
     type Ok = ();
-    type Error = <Serializer<'a> as serde::Serializer>::Error;
+    type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
     fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
     where
@@ -341,15 +340,15 @@ impl<'a> serde::ser::SerializeTupleVariant for TupleVariantSerializer<'a> {
     }
 }
 
-pub struct StructVariantSerializer<'a> {
-    original_output: &'a mut BytesMut,
-    nested_doc_output: BytesMut,
-    doc_output: BytesMut,
+pub struct StructVariantSerializer<'a, B: BytesLikeBuf> {
+    original_output: &'a mut B,
+    nested_doc_output: <B::Out as BytesLikeBuf>::Out,
+    doc_output: B::Out,
 }
 
-impl<'a> serde::ser::SerializeStructVariant for StructVariantSerializer<'a> {
+impl<'a, B: BytesLikeBuf> serde::ser::SerializeStructVariant for StructVariantSerializer<'a, B> {
     type Ok = ();
-    type Error = <Serializer<'a> as serde::Serializer>::Error;
+    type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
     fn serialize_field<T: ?Sized>(
         &mut self,
@@ -379,13 +378,13 @@ impl<'a> serde::ser::SerializeStructVariant for StructVariantSerializer<'a> {
     }
 }
 
-pub struct TupleStructSerializer<'a> {
-    inner: SeqSerializer<'a>,
+pub struct TupleStructSerializer<'a, B: BytesLikeBuf> {
+    inner: SeqSerializer<'a, B>,
 }
 
-impl<'a> serde::ser::SerializeTupleStruct for TupleStructSerializer<'a> {
+impl<'a, B: BytesLikeBuf> serde::ser::SerializeTupleStruct for TupleStructSerializer<'a, B> {
     type Ok = ();
-    type Error = <Serializer<'a> as serde::Serializer>::Error;
+    type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
     fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
     where
@@ -399,15 +398,15 @@ impl<'a> serde::ser::SerializeTupleStruct for TupleStructSerializer<'a> {
     }
 }
 
-pub struct SeqSerializer<'a> {
-    original_output: &'a mut BytesMut,
-    doc_output: BytesMut,
+pub struct SeqSerializer<'a, B: BytesLikeBuf> {
+    original_output: &'a mut B,
+    doc_output: B::Out,
     key: usize,
 }
 
-impl<'a> serde::ser::SerializeSeq for SeqSerializer<'a> {
+impl<'a, B: BytesLikeBuf> serde::ser::SerializeSeq for SeqSerializer<'a, B> {
     type Ok = ();
-    type Error = <Serializer<'a> as serde::Serializer>::Error;
+    type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
     fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
     where
@@ -427,14 +426,14 @@ impl<'a> serde::ser::SerializeSeq for SeqSerializer<'a> {
     }
 }
 
-pub struct StructSerializer<'a> {
-    original_output: &'a mut BytesMut,
-    doc_output: BytesMut,
+pub struct StructSerializer<'a, B: BytesLikeBuf> {
+    original_output: &'a mut B,
+    doc_output: B::Out,
 }
 
-impl<'a> serde::ser::SerializeStruct for StructSerializer<'a> {
+impl<'a, B: BytesLikeBuf> serde::ser::SerializeStruct for StructSerializer<'a, B> {
     type Ok = ();
-    type Error = <Serializer<'a> as serde::Serializer>::Error;
+    type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
     fn serialize_field<T: ?Sized>(
         &mut self,
@@ -462,7 +461,7 @@ pub enum DocumentKey {
 }
 
 impl DocumentKey {
-    pub fn write_to_buf(&self, buf: &mut BytesMut) {
+    pub fn write_to_buf<B: BytesLikeBuf>(&self, buf: &mut B) {
         match self {
             Self::Str(s) => buf.put_slice(s.as_bytes()),
             Self::Int(i) => {
@@ -473,27 +472,27 @@ impl DocumentKey {
     }
 }
 
-pub fn start_document(buffer: &mut BytesMut) -> BytesMut {
+pub fn start_document<B: BytesLikeBuf>(buffer: &mut B) -> B::Out {
+    let len = buffer.len();
+
     // splits the output for the doc to be written to, this is appended back onto to the
     // output when `StructSerializer::close` is called.
-    let mut doc_output = buffer.split_off(buffer.len());
+    let mut doc_output = buffer.split_off(len);
 
     // reserves a i32 we can write the document size to later
-    doc_output.put_i32(0);
+    doc_output.put_i32_le(0);
 
     doc_output
 }
 
-pub fn terminate_document(original_buffer: &mut BytesMut, mut document: BytesMut) {
+pub fn terminate_document<B: BytesLikeBuf>(original_buffer: &mut B, mut document: B::Out) {
     document.put_u8(0x00); // doc terminator
 
     // writes the total length of the output to the i32 we reserved earlier
     for (i, byte) in (document.len() as i32).to_le_bytes().iter().enumerate() {
-        debug_assert_eq!(
-            document[i], 0,
-            "document didn't reserve bytes for the length"
-        );
-        document[i] = *byte;
+        let byte_ref = document.byte_mut(i);
+        debug_assert_eq!(*byte_ref, 0, "document didn't reserve bytes for the length");
+        *byte_ref = *byte;
     }
 
     original_buffer.unsplit(document);

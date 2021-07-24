@@ -1,18 +1,33 @@
+mod byte;
 mod error;
 pub mod ser;
 
 pub use error::Error;
 
+use byte::CountingBytes;
 use bytes::BytesMut;
 use serde::Serialize;
 
 pub fn to_string<T: Serialize>(val: &T, output: &mut BytesMut) -> Result<(), Error> {
+    // do a quick pass over the value using our `CountingBytes` impl so we can do
+    // one big allocation rather than multiple smaller ones.
+    output.reserve(serialised_size_of(val)?);
+
     val.serialize(ser::Serializer { key: None, output })
+}
+
+pub fn serialised_size_of<T: Serialize>(val: &T) -> Result<usize, Error> {
+    let mut counting_bytes = CountingBytes::default();
+    val.serialize(ser::Serializer {
+        key: None,
+        output: &mut counting_bytes,
+    })?;
+    Ok(counting_bytes.bytes)
 }
 
 #[cfg(test)]
 mod test {
-    use super::to_string;
+    use super::{serialised_size_of, to_string};
     use bytes::{BufMut, BytesMut};
     use serde::Serialize;
 
@@ -75,6 +90,11 @@ mod test {
             .to_writer(&mut theirs)
             .unwrap();
 
-        assert_eq!(ours, theirs.into_inner());
+        let theirs = theirs.into_inner();
+        assert_eq!(ours, theirs);
+
+        let calculated_size = serialised_size_of(&test).unwrap();
+        assert_eq!(calculated_size, ours.len());
+        assert_eq!(calculated_size, theirs.len());
     }
 }
