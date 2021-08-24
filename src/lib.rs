@@ -63,6 +63,7 @@ mod test {
             e4: Test,
             t: (i32, i32, i32),
             ts: Tup,
+            y: bool,
         }
 
         let test = &A {
@@ -78,6 +79,7 @@ mod test {
                 e4: Test::Jkl { a: 16, b: 07 },
                 t: (16, 07, 1999),
                 ts: Tup(99, 100),
+                y: false,
             },
         };
 

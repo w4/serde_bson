@@ -35,7 +35,7 @@ impl<'a, B: BytesLikeBuf> serde::Serializer for Serializer<'a, B> {
     type SerializeStructVariant = StructVariantSerializer<'a, B>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        write_key_or_error!(0x01, self.key, self.output);
+        write_key_or_error!(0x08, self.key, self.output);
         self.output.put_u8(v as u8);
         Ok(())
     }
