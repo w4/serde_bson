@@ -106,9 +106,9 @@ impl<'a, B: BytesLikeBuf> serde::Serializer for Serializer<'a, B> {
         Ok(())
     }
 
-    fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
+    fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         value.serialize(self)
     }
@@ -130,18 +130,18 @@ impl<'a, B: BytesLikeBuf> serde::Serializer for Serializer<'a, B> {
         self.serialize_str(variant)
     }
 
-    fn serialize_newtype_struct<T: ?Sized>(
+    fn serialize_newtype_struct<T>(
         self,
         _name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         value.serialize(self)
     }
 
-    fn serialize_newtype_variant<T: ?Sized>(
+    fn serialize_newtype_variant<T>(
         self,
         _name: &'static str,
         _variant_index: u32,
@@ -149,7 +149,7 @@ impl<'a, B: BytesLikeBuf> serde::Serializer for Serializer<'a, B> {
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         let mut struct_serializer = self.serialize_struct("", 0)?;
         struct_serializer.serialize_field(variant, value)?;
@@ -294,9 +294,9 @@ impl<'a, B: BytesLikeBuf> serde::ser::SerializeTuple for TupleSerializer<'a, B> 
     type Ok = ();
     type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
-    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         self.inner.serialize_element(value)
     }
@@ -317,9 +317,9 @@ impl<'a, B: BytesLikeBuf> serde::ser::SerializeTupleVariant for TupleVariantSeri
     type Ok = ();
     type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
-    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         // we're basically inside a SeqSerializer here, but we can't instantiate one
         // so we'll duplicate the functionality instead
@@ -350,13 +350,9 @@ impl<'a, B: BytesLikeBuf> serde::ser::SerializeStructVariant for StructVariantSe
     type Ok = ();
     type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
-    fn serialize_field<T: ?Sized>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         // we're basically inside a nested StructSerializer here, but we can't
         // instantiate one so we'll duplicate the functionality instead. this
@@ -386,9 +382,9 @@ impl<'a, B: BytesLikeBuf> serde::ser::SerializeTupleStruct for TupleStructSerial
     type Ok = ();
     type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
-    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         self.inner.serialize_element(value)
     }
@@ -408,9 +404,9 @@ impl<'a, B: BytesLikeBuf> serde::ser::SerializeSeq for SeqSerializer<'a, B> {
     type Ok = ();
     type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
-    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         value.serialize(Serializer {
             key: Some(DocumentKey::Int(self.key)),
@@ -435,13 +431,9 @@ impl<'a, B: BytesLikeBuf> serde::ser::SerializeStruct for StructSerializer<'a, B
     type Ok = ();
     type Error = <Serializer<'a, B> as serde::Serializer>::Error;
 
-    fn serialize_field<T: ?Sized>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         value.serialize(Serializer {
             key: Some(DocumentKey::Str(key)),

@@ -12,19 +12,24 @@ license = "0BSD"
 [dependencies]
 serde = "1"
 bytes = "1"
-itoa = "0.4"
+itoa = "1.0"
+simdutf8 = "0.1"
+memchr = "2.7"
+thiserror = "1"
+bumpalo = { version = "3.16", features = ["collections"] }
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11"
-bson = "1.2"
-criterion = "0.3"
+bson = "2.13"
+criterion = "0.5"
 rand = "0.8"
+insta = "1.4"
 
 [[bench]]
-name = "borrowed"
+name = "serialize"
 harness = false
 
 [[bench]]
-name = "owned"
+name = "deserialize"
 harness = false

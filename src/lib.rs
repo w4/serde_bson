@@ -1,4 +1,5 @@
 mod byte;
+pub mod de;
 mod error;
 pub mod ser;
 
@@ -29,11 +30,11 @@ pub fn serialised_size_of<T: Serialize>(val: &T) -> Result<usize, Error> {
 mod test {
     use super::{serialised_size_of, to_string};
     use bytes::{BufMut, BytesMut};
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
 
     #[test]
     pub fn test_basic() {
-        #[derive(Serialize)]
+        #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
         pub struct A<'a> {
             cool: i32,
             #[serde(with = "serde_bytes")]
@@ -42,7 +43,7 @@ mod test {
             b: B<'a>,
         }
 
-        #[derive(Serialize)]
+        #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
         pub enum Test {
             Abc,
             Def(i32),
@@ -50,10 +51,10 @@ mod test {
             Jkl { a: i32, b: i32 },
         }
 
-        #[derive(Serialize)]
+        #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
         pub struct Tup(i32, i32);
 
-        #[derive(Serialize)]
+        #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
         pub struct B<'a> {
             s: &'a str,
             a: Vec<&'a str>,
@@ -98,5 +99,8 @@ mod test {
         let calculated_size = serialised_size_of(&test).unwrap();
         assert_eq!(calculated_size, ours.len());
         assert_eq!(calculated_size, theirs.len());
+
+        let deserialized: A = crate::de::from_bytes(&ours).unwrap();
+        assert_eq!(&deserialized, test);
     }
 }

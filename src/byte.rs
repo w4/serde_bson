@@ -49,7 +49,7 @@ deref_impl!(
     }
 );
 
-impl<'a, B: BytesLikeBuf> BytesLikeBuf for &mut B {
+impl<B: BytesLikeBuf> BytesLikeBuf for &mut B {
     type Out = <B as BytesLikeBuf>::Out;
 
     fn put_u8(&mut self, v: u8) {
@@ -115,7 +115,7 @@ impl BytesLikeBuf for CountingBytes {
     }
 
     fn put_slice(&mut self, s: &[u8]) {
-        self.bytes += std::mem::size_of::<u8>() * s.len();
+        self.bytes += std::mem::size_of_val(s);
     }
 
     fn split_off(&mut self, _at: usize) -> Self {
